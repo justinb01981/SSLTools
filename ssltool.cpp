@@ -362,7 +362,9 @@ int SetupConnection(SecSocketPair *s)
             break;
         }
 
-        err = connect(s->sdr, (sockaddr *) &gRemoteSockaddr,
+        struct sockaddr_in *cxnAddr = &gRemoteSockaddr;
+
+        err = connect(s->sdr, (sockaddr*) cxnAddr,
                       sizeof(struct sockaddr_in));
         if(err == -1)
         {
@@ -379,6 +381,8 @@ int SetupConnection(SecSocketPair *s)
                       << strerror(errno) << endl;
             break;
         }
+
+        logstream << "connect() from " << inet_ntoa(cxnAddr->sin_addr) <<":"<< ntohs(cxnAddr->sin_port) << endl;
 
         logstream << "calling SSL_new..." << endl;
         s->ssl = SSL_new(ctx);
@@ -407,7 +411,6 @@ int SetupConnection(SecSocketPair *s)
         if(err <= 0)
         {
             int failed = 0;
-            logstream << "failed" << endl;
             /*
             while(1)
             */
@@ -424,15 +427,15 @@ int SetupConnection(SecSocketPair *s)
                    || serr == SSL_ERROR_WANT_WRITE)
                 {
                     /* supposed to call select() to wait for handshake */
-                    if((*ssl_setup_func)(s->ssl) > 0)
+                    if( (err = (*ssl_setup_func)(s->ssl)) > 0)
                     {
                         err = 0;
                         break;
                     }
-                    continue;
                 }
                 else
                 {
+                    logstream << "failed" << endl;
                     failed = 1;       
                     break;
                 }
@@ -447,11 +450,16 @@ int SetupConnection(SecSocketPair *s)
                 err = 1;
                 break;
             }
-        }
-        else
-        {
-            logstream << "success" << endl;
-            err = 0;
+            else
+            {
+                struct sockaddr_in cxnAddr;
+                socklen_t caLen = sizeof(cxnAddr);
+
+                if(getpeername(s->sd, (struct sockaddr*) &cxnAddr, &caLen) == 0) {
+                    logstream << "connected " << inet_ntoa(cxnAddr.sin_addr) <<":"<< ntohs(cxnAddr.sin_port) << endl;
+                    err = 0;
+                }
+            }
         }
     }while(0);
 
